@@ -1,9 +1,12 @@
 from os import listdir
 from os.path import join
+import logging
+import logging.handlers as log_handlers
 
 from PIL import Image
 from torch.utils.data.dataset import Dataset
 from torchvision.transforms import Compose, RandomCrop, ToTensor, ToPILImage, CenterCrop, Resize
+from torchvision.transforms import InterpolationMode as Mode
 
 
 def is_image_file(filename):
@@ -21,30 +24,38 @@ def train_hr_transform(crop_size):
     ])
 
 
-def train_lr_transform(crop_size, upscale_factor):
+def train_lr_transform(crop_size):
     return Compose([
         ToPILImage(),
-        Resize(crop_size // upscale_factor, interpolation=Image.BICUBIC),
+        Resize(crop_size // 2, interpolation=Mode.BICUBIC),
         ToTensor()
     ])
 
+def get_logging_handler():
+    formatter = logging.Formatter(
+        '%(asctime)s - [%(levelname)s] - [%(module)s] - "%(message)s"')
+    logging_handler = log_handlers.TimedRotatingFileHandler(
+        'logs/', when='D', interval=2, backupCount=3)
+    logging_handler.setFormatter(formatter)
+    return logging_handler
 
 def display_transform():
     return Compose([
         ToPILImage(),
-        Resize(400),
+        Resize(1080),
         CenterCrop(400),
         ToTensor()
     ])
 
 
 class TrainDatasetFromFolder(Dataset):
-    def __init__(self, dataset_dir, crop_size, upscale_factor):
-        super(TrainDatasetFromFolder, self).__init__()
+    def __init__(self, dataset_dir, crop_size):
+        super().__init__()
         self.image_filenames = [join(dataset_dir, x) for x in listdir(dataset_dir) if is_image_file(x)]
-        crop_size = calculate_valid_crop_size(crop_size, upscale_factor)
+        if crop_size % 2 > 0:
+            crop_size -= 1
         self.hr_transform = train_hr_transform(crop_size)
-        self.lr_transform = train_lr_transform(crop_size, upscale_factor)
+        self.lr_transform = train_lr_transform(crop_size)
 
     def __getitem__(self, index):
         hr_image = self.hr_transform(Image.open(self.image_filenames[index]))
@@ -56,17 +67,18 @@ class TrainDatasetFromFolder(Dataset):
 
 
 class ValDatasetFromFolder(Dataset):
-    def __init__(self, dataset_dir, upscale_factor):
-        super(ValDatasetFromFolder, self).__init__()
-        self.upscale_factor = upscale_factor
+    def __init__(self, dataset_dir):
+        super().__init__()
         self.image_filenames = [join(dataset_dir, x) for x in listdir(dataset_dir) if is_image_file(x)]
 
     def __getitem__(self, index):
         hr_image = Image.open(self.image_filenames[index])
         w, h = hr_image.size
-        crop_size = calculate_valid_crop_size(min(w, h), self.upscale_factor)
-        lr_scale = Resize(crop_size // self.upscale_factor, interpolation=Image.BICUBIC)
-        hr_scale = Resize(crop_size, interpolation=Image.BICUBIC)
+        crop_size = min(w, h)
+        if crop_size % 2 > 0:
+            crop_size -= 1
+        lr_scale = Resize(crop_size // 2, interpolation=Mode.BICUBIC)
+        hr_scale = Resize(crop_size, interpolation=Mode.BICUBIC)
         hr_image = CenterCrop(crop_size)(hr_image)
         lr_image = lr_scale(hr_image)
         hr_restore_img = hr_scale(lr_image)
@@ -77,11 +89,10 @@ class ValDatasetFromFolder(Dataset):
 
 
 class TestDatasetFromFolder(Dataset):
-    def __init__(self, dataset_dir, upscale_factor):
+    def __init__(self, dataset_dir):
         super(TestDatasetFromFolder, self).__init__()
-        self.lr_path = dataset_dir + '/SRF_' + str(upscale_factor) + '/data/'
-        self.hr_path = dataset_dir + '/SRF_' + str(upscale_factor) + '/target/'
-        self.upscale_factor = upscale_factor
+        self.lr_path = dataset_dir + '/SRF_2/data/'
+        self.hr_path = dataset_dir + '/SRF_2/target/'
         self.lr_filenames = [join(self.lr_path, x) for x in listdir(self.lr_path) if is_image_file(x)]
         self.hr_filenames = [join(self.hr_path, x) for x in listdir(self.hr_path) if is_image_file(x)]
 
@@ -90,7 +101,7 @@ class TestDatasetFromFolder(Dataset):
         lr_image = Image.open(self.lr_filenames[index])
         w, h = lr_image.size
         hr_image = Image.open(self.hr_filenames[index])
-        hr_scale = Resize((self.upscale_factor * h, self.upscale_factor * w), interpolation=Image.BICUBIC)
+        hr_scale = Resize((2 * h, 2 * w), interpolation=Mode.BICUBIC)
         hr_restore_img = hr_scale(lr_image)
         return image_name, ToTensor()(lr_image), ToTensor()(hr_restore_img), ToTensor()(hr_image)
 
