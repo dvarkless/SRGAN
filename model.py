@@ -40,7 +40,7 @@ class Discriminator(nn.Module):
             nn.Conv2d(3, 64, kernel_size=3, padding=1),
             nn.LeakyReLU(0.2),
 
-            nn.Conv2d(64, 64, kernel_size=3, stride=2, padding=1),
+            nn.Conv2d(64, 64, kernel_size=3, padding=1),
             nn.BatchNorm2d(64),
             nn.LeakyReLU(0.2),
 
@@ -71,12 +71,15 @@ class Discriminator(nn.Module):
             nn.AdaptiveAvgPool2d(1),
             nn.Conv2d(512, 1024, kernel_size=1),
             nn.LeakyReLU(0.2),
-            nn.Conv2d(1024, 1, kernel_size=1)
+
+            nn.Conv2d(1024, 1, kernel_size=1),
         )
 
     def forward(self, x):
         batch_size = x.size(0)
-        return torch.sigmoid(self.net(x).view(batch_size))
+        net_out = self.net(x).view(batch_size)
+        net_out = nn.Sigmoid()(net_out)
+        return net_out
 
 
 class ResidualBlock(nn.Module):
