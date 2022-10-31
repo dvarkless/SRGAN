@@ -1,6 +1,7 @@
 from pathlib import Path
 from math import log10
 
+import csv
 import logging
 from datetime import date
 import torch
@@ -18,9 +19,11 @@ from loss import GeneratorLoss
 from model import Generator, Discriminator
 
 from alive_progress import alive_it
-
+import shutup; shutup.please()
 
 class Trainer:
+    __metric_names = ['gen_loss', 'disc_loss', 'gen_score', 
+                      'disc_score', 'mse', 'psnr', 'ssim']
     def __init__(self, crop_size=120, epochs=100, 
                  gen_optimizer=None, disc_optimizer=None, 
                  gen_optimizer_params=None, disc_optimizer_params=None, 
@@ -31,7 +34,7 @@ class Trainer:
         self.logger.setLevel(logging.DEBUG if verbose_logs else logging.INFO)
         self.logger.addHandler(get_logging_handler())
         self.logger.info('======= TRAINER STARTED ======')
-        set_detect_anomaly(True)
+
         self.cuda = torch.cuda.is_available()
         if not self.cuda:
             self.logger.error(f'Could not detect GPU on board, aborting (torch.cuda.is_available={self.cuda})')
@@ -87,6 +90,14 @@ class Trainer:
         
         bar = alive_it(range(self.epochs), self.epochs)
         for epoch in bar:
+            if epoch % 10 == 0 and epoch > 0:
+                print('saving models and history...')
+                g_name = f'Generator_{date.today().isoformat()}_epoch_{epoch}'
+                d_name = f'Discriminator_{date.today().isoformat()}_epoch_{epoch}'
+                self.save_model(self.gen_model, g_name, self.disc_model, d_name)
+                metric_table_name = f'Training_metrics_{date.today().isoformat()}'
+                self.save_metric_data(metric_table_name, epoch)
+
             gen_loss, disc_loss, gen_score, disc_score = self._train_epoch(train_loader)
             print(f'============= {epoch+1}/{self.epochs} =============')
             print(f'Training losses: Generator: {gen_loss:.4f}, Discriminator: {disc_loss:.4f}')
@@ -101,9 +112,10 @@ class Trainer:
 
             results['gen_loss'] = gen_loss
             results['disc_loss'] = disc_loss
+            results['gen_score'] = gen_score
+            results['disc_score'] = disc_score
             self.trainer_results.append(results.copy())
             del results
-
 
     def _train_epoch(self, loader):
         if not loader:
@@ -190,6 +202,21 @@ class Trainer:
 
         return evaling_results
 
+    def save_model(self, gen_model, gen_name, disc_model, disc_name):
+        models_path = Path('models')
+        if not models_path.exists():
+            models_path.mkdir()
+        torch.save(gen_model, models_path / f'{gen_name}.pt')
+        torch.save(disc_model, models_path / f'{disc_name}.pt')
+
+    def save_metric_data(self, name, epoch):
+        out_path = Path('statistics/')
+        data_frame = pd.DataFrame(
+            data={'Loss_D': self.get_metric_list('disc_loss'), 'Loss_G': self.get_metric_list('gen_loss'), 'Score_D': self.get_metric_list('disc_score'),
+                  'Score_G': self.get_metric_list('gen_score'), 'PSNR': self.get_metric_list('psnr'), 'SSIM': self.get_metric_list('ssim')},
+            index=range(1, epoch + 1))
+        data_frame.to_csv(out_path / f'{name}.csv', index_label='Epoch')
+
     def get_metric_list(self, metric_name):
         out_data = []
         if not (metric_name in self.trainer_results[0].keys()):
@@ -210,11 +237,11 @@ if __name__ == "__main__":
     gen_optimizer = torch.optim.Adam
     disc_optimizer = torch.optim.Adam
     gen_optimizer_params = {'lr': 5e-4}
-    disc_optimizer_params = {'lr': 1e-5}
+    disc_optimizer_params = {'lr': 2e-5}
     trainer = Trainer(crop_size=120, epochs=150, gen_optimizer=gen_optimizer, 
                       disc_optimizer=disc_optimizer, gen_optimizer_params=gen_optimizer_params,
                       disc_optimizer_params=disc_optimizer_params)
-    trainer.fit(train_dir, eval_dir, batch_size=16)
+    trainer.fit(train_dir, eval_dir, batch_size=20)
     plt.plot(trainer.get_metric_list('mse'))
     plt.plot(trainer.get_metric_list('ssim'))
     plt.show()
