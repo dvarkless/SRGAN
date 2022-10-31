@@ -25,7 +25,7 @@ class GeneratorLoss(nn.Module):
         self.adv_loss = self.adv_loss + 0.001 * adversarial_loss
         self.perc_loss = self.perc_loss + 0.007 * perception_loss
 
-        return image_loss + 0.001 * adversarial_loss + 0.007 * perception_loss
+        return image_loss + 0.001 * adversarial_loss + 0.004 * perception_loss
 
     def get_losses(self):
         return self.image_loss, self.adv_loss, self.perc_loss
