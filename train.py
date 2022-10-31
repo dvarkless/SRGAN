@@ -6,7 +6,6 @@ from datetime import date
 import torch
 import pandas as pd
 import torch.optim as optim
-import torch.utils.data as tdata
 import torchvision.utils as utils
 from torch.autograd import Variable
 from torch.autograd.anomaly_mode import set_detect_anomaly
@@ -46,7 +45,7 @@ class Trainer:
             self.logger.info('Initializing new models')
             self.gen_model = Generator()
             self.disc_model = Discriminator()
-
+        
         gen_optimizer_params = gen_optimizer_params if gen_optimizer_params else dict()
         disc_optimizer_params = disc_optimizer_params if disc_optimizer_params else dict()
         gen_optimizer_params['params'] = self.gen_model.parameters()
@@ -71,6 +70,8 @@ class Trainer:
 
         self.trainer_results = []
 
+        # print('# generator parameters:', sum(param.numel() for param in self.gen_model.parameters()))
+        # print('# discriminator parameters:', sum(param.numel() for param in self.disc_model.parameters()))
         self.gen_model.cuda()
         self.disc_model.cuda()
         self.gen_criterion.cuda()
@@ -86,9 +87,13 @@ class Trainer:
         
         bar = alive_it(range(self.epochs), self.epochs)
         for epoch in bar:
-            gen_loss, disc_loss = self._train_epoch(train_loader)
+            gen_loss, disc_loss, gen_score, disc_score = self._train_epoch(train_loader)
             print(f'============= {epoch+1}/{self.epochs} =============')
             print(f'Training losses: Generator: {gen_loss:.4f}, Discriminator: {disc_loss:.4f}')
+            print(f'Generator score: ({gen_score:.3f}), Discriminator score: ({disc_score:.3f})')
+            print('Singular losses:')
+            img_l, adv_l, perc_l = self.gen_criterion.get_losses()
+            print(f' Image loss = {img_l:.3f}; Adversarial loss = {adv_l:.3f}; Perception loss = {perc_l:.3f}')
             results = self._eval_epoch(eval_loader, epoch)
             print(f'Evaluating model:')
             for name, val in results.items():
@@ -106,10 +111,13 @@ class Trainer:
         self.gen_model.train()
         self.disc_model.train()
         self.gen_criterion.clear_losses()
-
-        for data, target, in loader:
-            hr_img = Variable(target).cuda()
-            lr_img = Variable(data).cuda()
+        gen_epoch_loss, disc_epoch_loss = 0, 0
+        gen_score, disc_score = 0, 0
+        i = 0
+        for i, data in enumerate(loader):
+            lr_img, hr_img = data
+            hr_img = Variable(hr_img).cuda()
+            lr_img = Variable(lr_img).cuda()
 
             sr_img = self.gen_model(lr_img)
 
@@ -117,45 +125,59 @@ class Trainer:
 
             real_out = self.disc_model(hr_img).mean()
             fake_out = self.disc_model(sr_img).mean()
-            disc_loss = 1 - real_out + fake_out
+            disc_loss = -torch.log(1-fake_out) - torch.log(real_out)
+            # print(f'print disc_loss = {disc_loss}')
             disc_loss.backward()
             self.disc_optimizer.step()
 
             self.gen_model.zero_grad()
             sr_img = self.gen_model(lr_img)
             fake_out = self.disc_model(sr_img).mean()
+
             gen_loss = self.gen_criterion(fake_out, sr_img, hr_img)
             gen_loss.backward()
             self.gen_optimizer.step()
 
-        print('Singular losses:')
-        img_l, adv_l, perc_l = self.gen_criterion.get_losses()
-        print(f' Image loss = {img_l:.3f}; Adversarial loss = {adv_l:.3f}; Perception loss = {perc_l:.3f}')
-        return gen_loss.item(), disc_loss.item()
+            gen_epoch_loss += gen_loss.item()
+            disc_epoch_loss += disc_loss.item()
+            gen_score += fake_out.item()
+            disc_score += real_out.item()
+        i += 1
+        
+        gen_score /= i
+        disc_score /= i
+        gen_epoch_loss /= i
+        disc_epoch_loss /= i
+        return gen_epoch_loss, disc_epoch_loss, gen_score, disc_score
 
     def _eval_epoch(self, loader, epoch):
         self.gen_model.eval()
 
         with torch.no_grad():
-            evaling_results = {'mse': 0, 'psnr': 0, 'ssim': 0, 'batch_size': 0}
+            evaling_results = {'mse': 0, 'psnr': 0, 'ssim': 0}
             eval_images = []
-            for eval_lr, eval_restored, eval_hr in loader:
+            i = 0
+            for i, (eval_lr, eval_restored, eval_hr) in enumerate(loader):
                 eval_lr = eval_lr.cuda()
                 eval_hr = eval_hr.cuda()
-                batch_size = eval_lr.size(0)
-                evaling_results['batch_size'] += batch_size
 
                 eval_sr = self.gen_model(eval_lr)
                 
-                batch_mse = torch.nn.functional.mse_loss(eval_sr, eval_hr)
-                evaling_results['mse'] += batch_mse * batch_size
+                single_mse = torch.nn.functional.mse_loss(eval_sr, eval_hr)
+                evaling_results['mse'] += single_mse.item()
 
-                batch_ssim = pytorch_ssim.ssim(eval_sr, eval_hr).item()
-                evaling_results['psnr'] = 10 * log10((eval_hr.max()**2) / (evaling_results['mse'] / evaling_results['batch_size']))
-                evaling_results['ssim'] = batch_ssim / evaling_results['batch_size']
+                
+                evaling_results['psnr'] += (eval_hr.max().item()**2) / single_mse.item()
+                evaling_results['ssim'] += pytorch_ssim.ssim(eval_sr, eval_hr).item()
                 eval_images.extend(
                         [display_transform()(eval_restored.squeeze(0)), display_transform()(eval_hr.data.cpu().squeeze(0)),
                          display_transform()(eval_sr.data.cpu().squeeze(0))])
+            i += 1
+            evaling_results['mse'] /= i
+            evaling_results['psnr'] /= i
+            evaling_results['psnr'] = 10 * log10(evaling_results['psnr'])
+            evaling_results['ssim'] /= i
+
             eval_images = torch.stack(eval_images)
             eval_images = torch.chunk(eval_images, eval_images.size(0) // 15)
             index = 1
@@ -185,18 +207,18 @@ class Trainer:
 if __name__ == "__main__":
     train_dir = Path('data/compressed_max_640_480/DIV2K_train_HR/')
     eval_dir = Path('data/compressed_max_640_480/DIV2K_valid_HR/')
-    gen_optimizer = torch.optim.AdamW
-    disc_optimizer = torch.optim.AdamW
-    gen_optimizer_params = {'lr': 1e-3}
-    disc_optimizer_params = {'lr': 2e-3}
-    trainer = Trainer(crop_size=200, epochs=50, gen_optimizer=gen_optimizer, 
+    gen_optimizer = torch.optim.Adam
+    disc_optimizer = torch.optim.Adam
+    gen_optimizer_params = {'lr': 5e-4}
+    disc_optimizer_params = {'lr': 1e-5}
+    trainer = Trainer(crop_size=120, epochs=150, gen_optimizer=gen_optimizer, 
                       disc_optimizer=disc_optimizer, gen_optimizer_params=gen_optimizer_params,
                       disc_optimizer_params=disc_optimizer_params)
-    trainer.fit(train_dir, eval_dir, batch_size=12)
+    trainer.fit(train_dir, eval_dir, batch_size=16)
     plt.plot(trainer.get_metric_list('mse'))
     plt.plot(trainer.get_metric_list('ssim'))
     plt.show()
     print('===============================')
-    plt.plot(trainer.get_metric_list('gen_loss'))
-    plt.plot(trainer.get_metric_list('disc_loss'))
+    plt.plot(trainer.get_metric_list('gen_score'))
+    plt.plot(trainer.get_metric_list('disc_score'))
     plt.show()
