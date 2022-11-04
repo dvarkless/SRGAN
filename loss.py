@@ -1,6 +1,6 @@
 import torch
 from torch import nn
-from torchvision.models.resnet import resnet50, ResNet50_Weights
+from torchvision.models.resnet import ResNet50_Weights, resnet50
 
 
 class FullLoss(nn.Module):
@@ -13,12 +13,12 @@ class FullLoss(nn.Module):
         self.mse_loss = nn.MSELoss()
         self.clear_losses()
 
-
     def forward(self, out_labels, out_images, target_images):
         # Adversarial Loss
         adversarial_loss = -torch.log(out_labels)
         # Perception Loss
-        perception_loss = self.mse_loss(self.loss_network(out_images), self.loss_network(target_images))
+        perception_loss = self.mse_loss(self.loss_network(
+            out_images), self.loss_network(target_images))
         # Image Loss
         image_loss = self.mse_loss(out_images, target_images)
         self.image_loss = self.image_loss + image_loss
@@ -36,6 +36,24 @@ class FullLoss(nn.Module):
         self.perc_loss = 0.0
 
 
+class MSELoss(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.mse_loss = nn.MSELoss()
+        self.clear_losses()
+
+    def forward(self, out_images, target_images):
+        image_loss = self.mse_loss(out_images, target_images)
+        self.image_loss = self.image_loss + image_loss
+        return image_loss
+
+    def get_losses(self):
+        return self.image_loss, 0, 0
+
+    def clear_losses(self):
+        self.image_loss = 0.0
+
+
 class AdversarialLoss(nn.Module):
     def __init__(self):
         super().__init__()
@@ -46,12 +64,12 @@ class AdversarialLoss(nn.Module):
         self.mse_loss = nn.MSELoss()
         self.clear_losses()
 
-
     def forward(self, out_labels, out_images, target_images):
         # Adversarial Loss
         adversarial_loss = -torch.log(out_labels)
         # Perception Loss
-        perception_loss = self.mse_loss(self.loss_network(out_images), self.loss_network(target_images))
+        perception_loss = self.mse_loss(self.loss_network(
+            out_images), self.loss_network(target_images))
         # Image Loss
         self.adv_loss = self.adv_loss + 0.001 * adversarial_loss
         self.perc_loss = self.perc_loss + 0.007 * perception_loss
