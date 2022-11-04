@@ -1,9 +1,12 @@
 # test model and misc
 models/
 statistics/
-training-results/
+training_results/
+test_input/
 test_output/
+test_images/
 logs
+data/*
 
 # jupyter stuff
 .jukit/
