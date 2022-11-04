@@ -111,7 +111,9 @@ class Trainer:
             del self.disc_optimizer
 
     def fit(self, train_hr_dir, eval_hr_dir, batch_size=32,
-            data_augmentation_type='plain'):
+            data_augmentation_type='plain', model_tag=None):
+        if model_tag:
+            self.model_tag = model_tag
         train_hr_dir = Path(train_hr_dir)
         eval_hr_dir = Path(eval_hr_dir)
         train_set = TrainDatasetFromFolder(
@@ -175,9 +177,12 @@ class Trainer:
             models_path.mkdir()
 
         g_name = f'Generator_{date.today().isoformat()}'\
-            + f'_epoch_{epoch}'*bool(epoch)
+            + f'_epoch{epoch}'*bool(epoch)
         d_name = f'Discriminator_{date.today().isoformat()}'\
-            + f'_epoch_{epoch}'*bool(epoch)
+            + f'_epoch{epoch}'*bool(epoch)
+        if hasattr(self, 'model_tag'):
+            g_name += f'_{self.model_tag}'
+            d_name += f'_{self.model_tag}'
 
         torch.save(self.gen_model.state_dict(), models_path / f'{g_name}.pt')
         if self.has_disc:
@@ -185,7 +190,9 @@ class Trainer:
                        models_path / f'{d_name}.pt')
 
         metric_table_name = f'Training_metrics_{date.today().isoformat()}'
-        self.save_metric_data(metric_table_name, epoch)
+        if hasattr(self, 'model_tag'):
+            metric_table_name += f'_{self.model_tag}'
+        self._save_metric_data(metric_table_name, epoch)
 
     def _step_batch_mse(self, lr_img, hr_img):
         self.gen_model.zero_grad()
@@ -341,11 +348,16 @@ class Trainer:
             index = 1
             for image in eval_images:
                 image = utils.make_grid(image, nrow=3, padding=5)
+                image_name = f'epoch_{epoch}_N{index}_psnr-'
+                image_name += f'{evaling_results["psnr"]:.3f}db_ssim-'
+                image_name += f'{evaling_results["ssim"]:.3f}'
+                if hasattr(self, 'model_tag'):
+                    image_name += f'_{self.model_tag}'
+                image_name += '.png'
+
                 utils.save_image(
                     image,
-                    self.out_path / f'epoch_{epoch}_N{index}_psnr-\
-                    {evaling_results["psnr"]:.3f}db_ssim-\
-                    {evaling_results["ssim"]:.3f}.png',
+                    self.out_path / image_name,
                     padding=5)
                 index += 1
                 if index > 5:
@@ -353,7 +365,7 @@ class Trainer:
 
         return evaling_results
 
-    def save_metric_data(self, name, epoch):
+    def _save_metric_data(self, name, epoch):
         out_path = Path('statistics/')
         data_frame = pd.DataFrame(
             data={'Loss_D': self.get_metric_list('disc_loss'),
