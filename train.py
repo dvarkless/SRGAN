@@ -400,10 +400,12 @@ if __name__ == "__main__":
     gen_optimizer_params = {'lr': 5e-4}
     disc_optimizer_params = {'lr': 2e-5}
     aug_lst = ['plain', 'extended', 'photo', 'game', 'video']
-    for aug_type in aug_lst
-    trainer = Trainer(crop_size=150, epochs=30, gen_optimizer=gen_optimizer,
-                      disc_optimizer=disc_optimizer,
-                      gen_optimizer_params=gen_optimizer_params,
-                      disc_optimizer_params=disc_optimizer_params,
-                      model_type='full')
-    trainer.fit(train_dir, eval_dir, batch_size=24)
+    for aug_type in aug_lst:
+        trainer = Trainer(crop_size=150, epochs=30, gen_optimizer=gen_optimizer,
+                          disc_optimizer=disc_optimizer,
+                          gen_optimizer_params=gen_optimizer_params,
+                          disc_optimizer_params=disc_optimizer_params,
+                          model_type='full')
+        trainer.fit(train_dir, eval_dir, batch_size=16,
+                    data_augmentation_type=aug_type,
+                    model_tag=aug_type)

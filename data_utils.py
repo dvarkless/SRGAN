@@ -4,6 +4,7 @@ from os import listdir
 from os.path import join
 
 import albumentations as A
+import numpy as np
 from PIL import Image
 from torch.utils.data.dataset import Dataset
 from torchvision.transforms import (CenterCrop, Compose, Resize, ToPILImage,
@@ -20,61 +21,86 @@ def calculate_valid_crop_size(crop_size, upscale_factor):
 
 
 def get_transformed_pair_plain(hr_img, crop_size):
-    hr_img = A.RandomCrop(crop_size, crop_size, always_apply=True)(hr_img)
+    hr_img = A.RandomCrop(crop_size, crop_size,
+                          always_apply=True)(image=hr_img)
     # Apply bicubic interpolation:
     lr_img = A.Resize(crop_size // 2, crop_size // 2,
-                      interpolation=2, always_apply=True)(hr_img)
-    lr_img = ToPILImage()(hr_img)
-    return ToTensor()(lr_img), ToTensor()(hr_img)
-
-
-def get_transformed_pair_extended(hr_img, crop_size):
-    hr_img = A.RandomCrop(crop_size, crop_size, always_apply=True)(hr_img)
-    hr_img = A.RandomBrightnessContrast()(hr_img)
-    hr_img = A.RandomRotate90()(hr_img)
-    # Apply bicubic interpolation:
-    lr_img = A.Resize(crop_size // 2, crop_size // 2,
-                      interpolation=2, always_apply=True)(hr_img)
-    lr_img = ToPILImage()(hr_img)
-    return ToTensor()(lr_img), ToTensor()(hr_img)
-
-
-def get_transformed_pair_photo(hr, crop_size):
-    img = A.RandomCrop(crop_size, crop_size, always_apply=True)(hr)
-    img = A.RandomBrightnessContrast()(img)
-    hr_img = A.RandomRotate90()(img)
-    # Apply bicubic interpolation:
-    lr_img = A.Resize(crop_size // 2, crop_size // 2,
-                      interpolation=2, always_apply=True)(hr_img.copy())
-    lr_img = A.ISONoise(p=0.5)(lr_img)
-    lr_img = A.JpegCompression(75, 95, p=0.5)(lr_img)
+                      interpolation=2, always_apply=True)(image=hr_img['image'])
+    lr_img = lr_img['image']
+    hr_img = hr_img['image']
+    lr_img *= 255  # or any coefficient
+    lr_img = lr_img.astype(np.uint8)
     lr_img = ToPILImage()(lr_img)
     return ToTensor()(lr_img), ToTensor()(hr_img)
 
 
-def get_transformed_pair_game(hr, crop_size):
-    img = A.RandomCrop(crop_size, crop_size, always_apply=True)(hr)
-    img = A.RandomBrightnessContrast()(img)
-    hr_img = A.RandomRotate90()(img)
-    hr_img = A.MotionBlur(blur_limit=(3, 10))(hr_img)
+def get_transformed_pair_extended(hr_img, crop_size):
+    hr_img = A.RandomCrop(crop_size, crop_size, always_apply=True)(
+        image=hr_img['image'])
+    hr_img = A.RandomBrightnessContrast()(image=hr_img['image'])
+    hr_img = A.RandomRotate90()(image=hr_img['image'])
+    hr_img = hr_img['image']
     # Apply bicubic interpolation:
     lr_img = A.Resize(crop_size // 2, crop_size // 2,
-                      interpolation=2, always_apply=True)(hr_img.copy())
+                      interpolation=2, always_apply=True)(image=hr_img)
+    lr_img = lr_img['image']
+    lr_img *= 255  # or any coefficient
+    lr_img = lr_img.astype(np.uint8)
+    lr_img = ToPILImage()(lr_img)
+    return ToTensor()(lr_img), ToTensor()(hr_img)
+
+
+def get_transformed_pair_photo(hr_img, crop_size):
+    hr_img = A.RandomCrop(crop_size, crop_size,
+                          always_apply=True)(image=hr_img)
+    hr_img = A.RandomBrightnessContrast()(image=hr_img['image'])
+    hr_img = A.RandomRotate90()(image=hr_img['image'])
+    hr_img = hr_img['image']
+    # Apply bicubic interpolation:
+    lr_img = A.Resize(crop_size // 2, crop_size // 2,
+                      interpolation=2, always_apply=True)(image=hr_img)
+    lr_img = A.ISONoise(p=0.5)(image=lr_img['image'])
+    lr_img = A.JpegCompression(75, 95, p=0.5)(image=lr_img['image'])
+    lr_img = lr_img['image']
+    lr_img *= 255  # or any coefficient
+    lr_img = lr_img.astype(np.uint8)
+    lr_img = ToPILImage()(lr_img)
+    return ToTensor()(lr_img), ToTensor()(hr_img)
+
+
+def get_transformed_pair_game(hr_img, crop_size):
+    hr_img = A.RandomCrop(crop_size, crop_size,
+                          always_apply=True)(image=hr_img)
+    hr_img = A.RandomBrightnessContrast()(image=hr_img['image'])
+    hr_img = A.RandomRotate90()(image=hr_img['image'])
+    hr_img = A.MotionBlur(blur_limit=(3, 10))(image=hr_img['image'])
+    hr_img = hr_img['image']
+    # Apply bicubic interpolation:
+    lr_img = A.Resize(crop_size // 2, crop_size // 2,
+                      interpolation=2, always_apply=True)(image=hr_img)
+    lr_img = lr_img['image']
+    lr_img *= 255  # or any coefficient
+    lr_img = lr_img.astype(np.uint8)
     lr_img = ToPILImage()(lr_img)
     return ToTensor()(lr_img), ToTensor()(hr_img)
 
 
 def get_transformed_pair_video(hr_img, crop_size):
-    hr_img = A.RandomCrop(crop_size, crop_size, always_apply=True)(hr_img)
-    hr_img = A.RandomBrightnessContrast()(hr_img)
-    hr_img = A.RandomRotate90()(hr_img)
-    hr_img = A.MotionBlur(blur_limit=(3, 10))(hr_img)
+    hr_img = A.RandomCrop(crop_size, crop_size,
+                          always_apply=True)(image=hr_img)
+    hr_img = A.RandomBrightnessContrast()(image=hr_img['image'])
+    hr_img = A.RandomRotate90()(image=hr_img['image'])
+    hr_img = A.MotionBlur(blur_limit=(3, 10))(image=hr_img['image'])
+    hr_img = hr_img['image']
     # Apply bicubic interpolation:
     lr_img = A.Resize(crop_size // 2, crop_size // 2,
-                      interpolation=2, always_apply=True)(hr_img)
-    lr_img = A.ISONoise(p=0.5)(lr_img)
-    lr_img = A.JpegCompression(75, 95, p=0.5)(lr_img)
-    lr_img = ToPILImage()(hr_img)
+                      interpolation=2, always_apply=True)(image=hr_img)
+    lr_img = A.ISONoise(p=0.5)(image=lr_img['image'])
+    lr_img = A.JpegCompression(75, 95, p=0.5)(image=lr_img['image'])
+    lr_img = lr_img['image']
+    lr_img *= 255  # or any coefficient
+    lr_img = lr_img.astype(np.uint8)
+    lr_img = ToPILImage()(lr_img)
     return ToTensor()(lr_img), ToTensor()(hr_img)
 
 
@@ -89,6 +115,7 @@ def get_logging_handler():
 
 def display_transform():
     return Compose([
+        ToPILImage(),
         Resize(1080),
         CenterCrop(400),
         ToTensor()
@@ -111,6 +138,8 @@ class TrainDatasetFromFolder(Dataset):
                                 if is_image_file(x)]
         if crop_size % 2 > 0:
             crop_size -= 1
+        self.crop_size = crop_size
+
         if transform not in self.__available_transforms.keys():
             my_lst = self.__available_transforms.keys()
             msg = f'Choose parameter transform={transform} from {my_lst}'
@@ -118,8 +147,11 @@ class TrainDatasetFromFolder(Dataset):
         self.pair_transform = self.__available_transforms[transform]
 
     def __getitem__(self, index):
+        hr_image = ToTensor()(Image.open(self.image_filenames[index]))
+        hr_image = hr_image.cpu().numpy().swapaxes(0, 2)
         lr_image, hr_image = self.pair_transform(
-            Image.open(self.image_filenames[index]))
+            hr_image,
+            self.crop_size)
         return lr_image, hr_image
 
     def __len__(self):
@@ -134,16 +166,17 @@ class ValDatasetFromFolder(Dataset):
                                 if is_image_file(x)]
 
     def __getitem__(self, index):
-        hr_image = Image.open(self.image_filenames[index])
-        w, h = hr_image.size
+        hr_image = ToTensor()(Image.open(self.image_filenames[index]))
+        hr_image = hr_image.cpu().numpy().swapaxes(0, 2)
+        w, h = hr_image.shape[0:2]
         crop_size = min(w, h)
         if crop_size % 2 > 0:
             crop_size -= 1
         lr_scale = A.Resize(crop_size // 2, crop_size // 2, interpolation=2)
         hr_scale = A.Resize(crop_size, crop_size, interpolation=2)
-        hr_image = A.CenterCrop(crop_size, crop_size)(hr_image)
-        lr_image = lr_scale(hr_image)
-        hr_restore_img = hr_scale(lr_image)
+        hr_image = A.CenterCrop(crop_size, crop_size)(image=hr_image)['image']
+        lr_image = lr_scale(image=hr_image)['image']
+        hr_restore_img = hr_scale(image=lr_image)['image']
         return ToTensor()(lr_image), ToTensor()(hr_restore_img), \
             ToTensor()(hr_image)
 
@@ -163,11 +196,13 @@ class TestDatasetFromFolder(Dataset):
 
     def __getitem__(self, index):
         image_name = self.lr_filenames[index].split('/')[-1]
-        lr_image = Image.open(self.lr_filenames[index])
-        w, h = lr_image.size
-        hr_image = Image.open(self.hr_filenames[index])
+        lr_image = ToTensor()(Image.open(self.lr_filenames[index]))
+        lr_image = lr_image.cpu().numpy().swapaxes(0, 2)
+        w, h = lr_image.shape[0:2]
+        hr_image = ToTensor()(Image.open(self.hr_filenames[index]))
+        hr_image = hr_image.cpu().numpy().swapaxes(0, 2)
         hr_scale = A.Resize(2 * h, 2 * w, interpolation=2)
-        hr_restore_img = hr_scale(lr_image)
+        hr_restore_img = hr_scale(image=lr_image)['image']
         return image_name, ToTensor()(lr_image), ToTensor()(hr_restore_img), \
             ToTensor()(hr_image)
 
