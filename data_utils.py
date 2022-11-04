@@ -36,7 +36,7 @@ def get_transformed_pair_plain(hr_img, crop_size):
 
 def get_transformed_pair_extended(hr_img, crop_size):
     hr_img = A.RandomCrop(crop_size, crop_size, always_apply=True)(
-        image=hr_img['image'])
+        image=hr_img)
     hr_img = A.RandomBrightnessContrast()(image=hr_img['image'])
     hr_img = A.RandomRotate90()(image=hr_img['image'])
     hr_img = hr_img['image']
@@ -59,11 +59,12 @@ def get_transformed_pair_photo(hr_img, crop_size):
     # Apply bicubic interpolation:
     lr_img = A.Resize(crop_size // 2, crop_size // 2,
                       interpolation=2, always_apply=True)(image=hr_img)
-    lr_img = A.ISONoise(p=0.5)(image=lr_img['image'])
+    lr_img = lr_img['image']
+    lr_img *= 255
+    lr_img = lr_img.astype(np.uint8)
+    lr_img = A.ISONoise(p=0.5)(image=lr_img)
     lr_img = A.JpegCompression(75, 95, p=0.5)(image=lr_img['image'])
     lr_img = lr_img['image']
-    lr_img *= 255  # or any coefficient
-    lr_img = lr_img.astype(np.uint8)
     lr_img = ToPILImage()(lr_img)
     return ToTensor()(lr_img), ToTensor()(hr_img)
 
@@ -90,16 +91,17 @@ def get_transformed_pair_video(hr_img, crop_size):
                           always_apply=True)(image=hr_img)
     hr_img = A.RandomBrightnessContrast()(image=hr_img['image'])
     hr_img = A.RandomRotate90()(image=hr_img['image'])
-    hr_img = A.MotionBlur(blur_limit=(3, 10))(image=hr_img['image'])
+    hr_img = A.MotionBlur(blur_limit=(3, 11))(image=hr_img['image'])
     hr_img = hr_img['image']
     # Apply bicubic interpolation:
     lr_img = A.Resize(crop_size // 2, crop_size // 2,
                       interpolation=2, always_apply=True)(image=hr_img)
-    lr_img = A.ISONoise(p=0.5)(image=lr_img['image'])
-    lr_img = A.JpegCompression(75, 95, p=0.5)(image=lr_img['image'])
     lr_img = lr_img['image']
     lr_img *= 255  # or any coefficient
     lr_img = lr_img.astype(np.uint8)
+    lr_img = A.ISONoise(p=0.5)(image=lr_img)
+    lr_img = A.JpegCompression(75, 95, p=0.5)(image=lr_img['image'])
+    lr_img = lr_img['image']
     lr_img = ToPILImage()(lr_img)
     return ToTensor()(lr_img), ToTensor()(hr_img)
 

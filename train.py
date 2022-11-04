@@ -129,8 +129,12 @@ class Trainer:
         bar = alive_it(range(self.epochs), self.epochs,
                        calibrate=0.5, force_tty=True,
                        dual_line=True)
+        epoch = 0
         for epoch in bar:
-            bar.title('SRGAN.fit()')
+            if hasattr(self, 'model_tag'):
+                bar.title(f'SRGAN_{model_tag}.fit()')
+            else:
+                bar.title('SRGAN.fit()')
             if epoch % 10 == 0 and epoch > 0:
                 bar.text('-> Saving models and history...')
                 self._save_models(epoch)
@@ -166,7 +170,7 @@ class Trainer:
             self.trainer_results.append(results.copy())
             del results
 
-        self._save_models()
+        self._save_models(epoch+1)
 
     def _save_models(self, epoch: int = 0):
         msg = 'saving models and history...'
@@ -399,7 +403,7 @@ if __name__ == "__main__":
     disc_optimizer = torch.optim.Adam
     gen_optimizer_params = {'lr': 5e-4}
     disc_optimizer_params = {'lr': 2e-5}
-    aug_lst = ['plain', 'extended', 'photo', 'game', 'video']
+    aug_lst = ['game', 'video']
     for aug_type in aug_lst:
         trainer = Trainer(crop_size=150, epochs=30, gen_optimizer=gen_optimizer,
                           disc_optimizer=disc_optimizer,
