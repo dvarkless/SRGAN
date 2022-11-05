@@ -1,7 +1,5 @@
 import logging
 import logging.handlers as log_handlers
-from os import listdir
-from os.path import join
 from pathlib import Path
 
 import albumentations as A
@@ -138,8 +136,9 @@ class TrainDatasetFromFolder(Dataset):
 
     def __init__(self, dataset_dir, crop_size, transform='plain'):
         super().__init__()
-        self.image_filenames = [join(dataset_dir, x)
-                                for x in listdir(dataset_dir)
+        dataset_dir = Path(dataset_dir)
+        self.image_filenames = [dataset_dir / x
+                                for x in dataset_dir.iterdir()
                                 if is_image_file(x)]
         if crop_size % 2 > 0:
             crop_size -= 1
@@ -166,8 +165,8 @@ class TrainDatasetFromFolder(Dataset):
 class ValDatasetFromFolder(Dataset):
     def __init__(self, dataset_dir):
         super().__init__()
-        self.image_filenames = [join(dataset_dir, x)
-                                for x in listdir(dataset_dir)
+        self.image_filenames = [dataset_dir / x
+                                for x in dataset_dir.iterdir()
                                 if is_image_file(x)]
 
     def __getitem__(self, index):
@@ -192,15 +191,16 @@ class ValDatasetFromFolder(Dataset):
 class TestDatasetFromFolder(Dataset):
     def __init__(self, dataset_dir):
         super(TestDatasetFromFolder, self).__init__()
-        self.lr_path = dataset_dir + '/SRF_2/data/'
-        self.hr_path = dataset_dir + '/SRF_2/target/'
-        self.lr_filenames = [join(self.lr_path, x)
-                             for x in listdir(self.lr_path) if is_image_file(x)]
-        self.hr_filenames = [join(self.hr_path, x)
-                             for x in listdir(self.hr_path) if is_image_file(x)]
+        dataset_dir = Path(dataset_dir)
+        self.lr_path = dataset_dir / 'SRF_2/data/'
+        self.hr_path = dataset_dir / 'SRF_2/target/'
+        self.lr_filenames = [self.lr_path / x
+                             for x in self.lr_path.iterdir() if is_image_file(x)]
+        self.hr_filenames = [self.hr_path / x
+                             for x in self.hr_path.iterdir() if is_image_file(x)]
 
     def __getitem__(self, index):
-        image_name = self.lr_filenames[index].split('/')[-1]
+        image_name = self.lr_filenames[index].stem
         lr_image = ToTensor()(Image.open(self.lr_filenames[index]))
         lr_image = lr_image.cpu().numpy().swapaxes(0, 2)
         w, h = lr_image.shape[0:2]
