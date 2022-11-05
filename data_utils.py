@@ -2,9 +2,12 @@ import logging
 import logging.handlers as log_handlers
 from os import listdir
 from os.path import join
+from pathlib import Path
 
 import albumentations as A
+import cv2
 import numpy as np
+from alive_progress import alive_it
 from PIL import Image
 from torch.utils.data.dataset import Dataset
 from torchvision.transforms import (CenterCrop, Compose, Resize, ToPILImage,
@@ -210,3 +213,50 @@ class TestDatasetFromFolder(Dataset):
 
     def __len__(self):
         return len(self.lr_filenames)
+
+
+def slice_video(video_path, expected_output, output_dir='sliced_data'):
+    formats = ['.mp4', '.mp3', '.mkv', '.avi']
+    video_path = Path(video_path)
+    if not video_path.exists() or video_path.suffix not in formats:
+        msg = f'Cannot find video file at path "{video_path}"'
+        raise FileNotFoundError(msg)
+    capture = cv2.VideoCapture(str(video_path))
+
+    output_dir = Path(output_dir)
+    if not output_dir.exists():
+        output_dir.mkdir()
+
+    frame_numbers = capture.get(cv2.CAP_PROP_FRAME_COUNT)
+    save_divisor = frame_numbers // expected_output
+    assert save_divisor > 0
+    progress = alive_it(range(int(frame_numbers)),
+                        dual_line=True)
+    count = 1
+    for i in progress:
+        success, frame = capture.read()
+        if i == 0:
+            progress.title('Slicing video...')
+            continue
+        if success:
+            if i % save_divisor == 0:
+                if count > expected_output:
+                    break
+                if frame.mean() < 5:
+                    continue
+                img_path = output_dir / f'{count}.png'
+                cv2.imwrite(str(img_path), frame)
+                count += 1
+        progress.text(f'Images so far: ({count})')
+
+    msg = f'Slicing is done, got {count} images'
+    print(msg)
+
+
+def main():
+    path = "test_output/upscaled_test_video_480.mp4"
+    slice_video(path, 200, output_dir='video/test_dataset')
+
+
+if __name__ == '__main__':
+    main()
