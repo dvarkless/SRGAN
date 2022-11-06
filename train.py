@@ -33,7 +33,8 @@ class Trainer:
                  gen_optimizer=None, disc_optimizer=None,
                  gen_optimizer_params=None, disc_optimizer_params=None,
                  verbose_logs=False, gen_model_name=None,
-                 disc_model_name=None, model_type='full') -> None:
+                 disc_model_name=None, model_type='full', 
+                 save_interval=10) -> None:
 
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(logging.DEBUG if verbose_logs else logging.INFO)
@@ -50,6 +51,8 @@ class Trainer:
         self.model_type = model_type
         assert self.model_type in self.__model_types
         self.has_disc = True if self.model_type != 'mse' else False
+
+        self.save_interval = save_interval
 
         if gen_model_name and disc_model_name:
             self.logger.info(
@@ -135,7 +138,7 @@ class Trainer:
                 bar.title(f'SRGAN_{model_tag}.fit()')
             else:
                 bar.title('SRGAN.fit()')
-            if epoch % 10 == 0 and epoch > 0:
+            if epoch % self.save_interval == 0 and epoch > 0:
                 bar.text('-> Saving models and history...')
                 self._save_models(epoch)
 
@@ -394,22 +397,3 @@ class Trainer:
             out_data.append(item[metric_name])
 
         return out_data
-
-
-if __name__ == "__main__":
-    train_dir = Path('data/compressed_max_640_480/DIV2K_train_HR/')
-    eval_dir = Path('data/compressed_max_640_480/DIV2K_valid_HR/')
-    gen_optimizer = torch.optim.Adam
-    disc_optimizer = torch.optim.Adam
-    gen_optimizer_params = {'lr': 5e-4}
-    disc_optimizer_params = {'lr': 2e-5}
-    aug_lst = ['game', 'video']
-    for aug_type in aug_lst:
-        trainer = Trainer(crop_size=150, epochs=30, gen_optimizer=gen_optimizer,
-                          disc_optimizer=disc_optimizer,
-                          gen_optimizer_params=gen_optimizer_params,
-                          disc_optimizer_params=disc_optimizer_params,
-                          model_type='full')
-        trainer.fit(train_dir, eval_dir, batch_size=16,
-                    data_augmentation_type=aug_type,
-                    model_tag=aug_type)
