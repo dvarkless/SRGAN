@@ -18,8 +18,8 @@ from torch.autograd import Variable
 from torchvision.transforms import InterpolationMode, ToPILImage, ToTensor
 
 import pytorch_ssim
+from decorators import no_grad, timer
 from model import Generator
-from timer_decorator import no_grad, timer
 
 
 class ModelTester:
@@ -44,9 +44,9 @@ class ModelTester:
 
         model_path = Path(model_path)
         if model_path.exists():
-            # self.model.load_state_dict(torch.load(model_path))
-            self.model = torch.load(model_path)
-            self.model.cuda()
+            self.model.load_state_dict(torch.load(model_path))
+            # self.model = torch.load(model_path)
+            # self.model.cuda()
         else:
             raise FileNotFoundError(
                 f'Model at path "{model_path.absolute().resolve()}" is not found')
@@ -70,7 +70,8 @@ class ModelTester:
 
     @timer
     @no_grad
-    def run_on_image(self, image: Image.Image | torch.Tensor | Path | str, high_res_image: Image.Image | torch.Tensor | Path | str | None = None,
+    def run_on_image(self, image: Image.Image | torch.Tensor | Path | str,
+                     high_res_image: Image.Image | torch.Tensor | Path | str | None = None,
                      output_mode: str | bool = False) -> None:
         if isinstance(image, str | Path):
             title = Path(image).name
@@ -221,14 +222,14 @@ class ModelTester:
 
     def sr_writer_builder(self, filename, fps):
         filename = filename + '.avi'
-        return cv2.VideoWriter(str(self.root_dir / filename), 
+        return cv2.VideoWriter(str(self.root_dir / filename),
                                cv2.VideoWriter_fourcc(*'MPEG'), fps, self.sr_video_size)
 
     def compared_writer_builder(self, filename, fps):
         filename = filename + '.avi'
         compared_video_size = (
             int(self.sr_video_size[0] * 2 + 10), int(self.sr_video_size[1] * 2))
-        return cv2.VideoWriter(str(self.root_dir / filename), 
+        return cv2.VideoWriter(str(self.root_dir / filename),
                                cv2.VideoWriter_fourcc(*'MPEG'), fps, compared_video_size)
 
     def compared_frame_assemble(self, frame: np.ndarray, frame_type: str):
