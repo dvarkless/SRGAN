@@ -1,7 +1,8 @@
 import subprocess
 import sys
 import time
-from math import log
+from math import ceil, log
+from operator import mod, xor
 # import matplotlib.pyplot as plt
 # import logging
 from pathlib import Path
@@ -15,7 +16,8 @@ from alive_progress import alive_it
 # import torchvision.transforms as transforms
 from PIL import Image, ImageShow
 from torch.autograd import Variable
-from torchvision.transforms import InterpolationMode, ToPILImage, ToTensor
+from torchvision.transforms import (InterpolationMode, Resize, ToPILImage,
+                                    ToTensor)
 
 import pytorch_ssim
 from decorators import no_grad, timer
@@ -23,13 +25,14 @@ from model import Generator
 
 
 class ModelTester:
-    def __init__(self, model_path, use_gpu=True) -> None:
+    def __init__(self, model_path, use_gpu=True, model_tag=None) -> None:
         self.logger = None
         self.use_gpu = use_gpu
         self.last_runtime = 0
         self.model_runtime = 0
         self.root_dir = Path('test_output')
         self.input_dir = Path('test_input')
+        self.model_tag = '' if model_tag is None else model_tag
 
         if not self.root_dir.exists():
             self.root_dir.mkdir()
@@ -53,7 +56,7 @@ class ModelTester:
 
         self.model.eval()
 
-    def __image_type_change(self, img, none_is_ok=False):
+    def __image_type_change(self, img, none_is_ok=False, compress=False):
         if img is None:
             if none_is_ok:
                 return None
@@ -61,6 +64,12 @@ class ModelTester:
             img = Path(img)
         if isinstance(img, Path):
             img = Image.open(img)
+            img = Resize((img.size[1]+mod(img.size[1], 2),
+                          img.size[0]+mod(img.size[0], 2)),
+                         InterpolationMode.BICUBIC)(img)
+            if compress:
+                img = Resize((img.size[1]//2, img.size[0]//2),
+                             InterpolationMode.BICUBIC)(img)
         if isinstance(img, Image.Image):
             img = Variable(ToTensor()(img)).unsqueeze(0)
         if not isinstance(img, torch.Tensor):
@@ -70,24 +79,37 @@ class ModelTester:
 
     @timer
     @no_grad
-    def run_on_image(self, image: Image.Image | torch.Tensor | Path | str,
-                     high_res_image: Image.Image | torch.Tensor | Path | str | None = None,
-                     output_mode: str | bool = False) -> None:
-        if isinstance(image, str | Path):
-            title = Path(image).name
-            image = self.input_dir / image
-            for suf in ['.png', '.jpg']:
-                title = title.removesuffix(suf)
-        else:
-            title = 'Provided image'
+    def run_on_image(self,
+                     lr_image: Image.Image | torch.Tensor | Path | str | None = None,
+                     hr_image: Image.Image | torch.Tensor | Path | str | None = None,
+                     output_mode: str | bool = False, save_bicubic=False,
+                     ) -> None:
+        imgs = [lr_image, hr_image]
+        title = 'Provided image'
+        for i, image in enumerate(imgs):
+            if isinstance(image, str | Path):
+                title = Path(image).name
+                image = self.input_dir / image
+                imgs[i] = image
+                for suf in ['.png', '.jpg']:
+                    title = title.removesuffix(suf)
+        lr_image, hr_image = imgs
 
-        image, high_res_image = [self.__image_type_change(
-            img, count) for count, img in enumerate((image, high_res_image))]
+        if not xor(lr_image is None, hr_image is None):
+            raise ValueError('Please provide exactly one image')
+
+        lr_image = self.__image_type_change(lr_image, True)
+        compressed_image = self.__image_type_change(hr_image, True,
+                                                    compress=True)
+        hr_image = self.__image_type_change(hr_image, True)
+        image = compressed_image if lr_image is None else lr_image
         # thing to shut typechecker up:
         if not isinstance(image, torch.Tensor):
-            return
-
+            print(image)
+            raise ValueError('Something went wrong with image tensor, lol')
         if self.use_gpu:
+            if isinstance(hr_image, torch.Tensor):
+                hr_image = hr_image.cuda()
             image = image.cuda()
         start_time = time.time()
         try:
@@ -98,11 +120,13 @@ class ModelTester:
             print(
                 f'Input image of size {tuple(image.shape[2:])} is too big for your GPU, try a smaller one')
             sys.exit(1)
+
+        image_size = out_image.shape
         self.model_runtime = time.time() - start_time
 
-        if isinstance(high_res_image, torch.Tensor):
+        if isinstance(hr_image, torch.Tensor):
             image_psnr, image_ssim = self.get_metrics(
-                out_image, high_res_image)
+                out_image, hr_image)
         else:
             image_psnr, image_ssim = None, None
         out_image = ToPILImage()(out_image[0].data.cpu())
@@ -119,16 +143,23 @@ class ModelTester:
                     chosen from ("save", "show") or bool value')
 
         # save or show our image
+        if save_bicubic:
+            bicubic_img = ToPILImage()(image[0].data.cpu())
+            transform = Resize(
+                image_size[2:], interpolation=InterpolationMode.BICUBIC)
+            bicubic_img = transform(bicubic_img)
+            bicubic_img.save(self.root_dir / f'{title}_bicubic.png')
+
         if output_mode:
-            if isinstance(high_res_image, torch.Tensor):
-                title = f'{title} with metrics: psпопьем_пива.mp4nr \
+            if isinstance(hr_image, torch.Tensor):
+                title = f'{title} with metrics: psnr \
                          ={image_psnr:.2f}db, ssim={image_ssim:.2f}'
             ImageShow.show(out_image, title=title)
         else:
-            if isinstance(high_res_image, torch.Tensor):
-                filename = f'{title}_psnr_{image_psnr:.2f}db_ssim_{image_ssim:.2f}.png'
+            if isinstance(hr_image, torch.Tensor):
+                filename = f'upscaled_{self.model_tag}_{title}_psnr_{image_psnr:.2f}db_ssim_{image_ssim:.2f}.png'
             else:
-                filename = f'{title}.png'
+                filename = f'upscaled_{self.model_tag}_{title}.png'
             out_image.save(self.root_dir / filename)
 
     @timer
@@ -244,9 +275,18 @@ class ModelTester:
 
 
 if __name__ == '__main__':
-    image_path = '0550x2.png'
-    video_path = 'попьем_пива.mp4'
-    tester = ModelTester('models/Generator_2022-11-01_epoch_170.pt')
-    tester.run_on_video(video_path, video_type='comparison')
-
-    print(f'{tester.last_runtime:.6f} s')
+    tree_image = 'tree.png'
+    vegetaples_image = 'vegatables.png'
+    sky_image = 'skyscraper.png'
+    laptop_image = 'laptop.png'
+    mse_model = '/run/media/dvarkless/LinuxData/Files/Учеба/Data_Science_Course/SRGAN/models/favorites/mse_vs_gan_vs_full/mse_only_120.pt'
+    gan_model = '/run/media/dvarkless/LinuxData/Files/Учеба/Data_Science_Course/SRGAN/models/favorites/mse_vs_gan_vs_full/gan_only_120.pt'
+    full_model = '/run/media/dvarkless/LinuxData/Files/Учеба/Data_Science_Course/SRGAN/models/favorites/augmentations_full/Generator_2022-11-06_epoch220_photo.pt'
+    model_names = ['mse', 'gan', 'full']
+    models = [mse_model, gan_model, full_model]
+    images = [tree_image, vegetaples_image, sky_image, laptop_image]
+    for name, model_path in zip(model_names, models):
+        tester = ModelTester(model_path, model_tag=name)
+        for image_path in images:
+            tester.run_on_image(hr_image=image_path, save_bicubic=True)
+    print('Done!')
