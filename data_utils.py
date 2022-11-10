@@ -23,6 +23,7 @@ def calculate_valid_crop_size(crop_size, upscale_factor):
 
 
 def get_transformed_pair_plain(hr_img, crop_size):
+    hr_img = cv2.cvtColor(hr_image, cv2.COLOR_BGR2RGB)
     hr_img = A.RandomCrop(crop_size, crop_size,
                           always_apply=True)(image=hr_img)
     # Apply bicubic interpolation:
@@ -40,6 +41,7 @@ def get_transformed_pair_plain(hr_img, crop_size):
 
 
 def get_transformed_pair_extended(hr_img, crop_size):
+    hr_img = cv2.cvtColor(hr_image, cv2.COLOR_BGR2RGB)
     hr_img = A.RandomCrop(crop_size, crop_size, always_apply=True)(
         image=hr_img)
     hr_img = A.RandomBrightnessContrast()(image=hr_img['image'])
@@ -59,6 +61,7 @@ def get_transformed_pair_extended(hr_img, crop_size):
 
 
 def get_transformed_pair_photo(hr_img, crop_size):
+    hr_img = cv2.cvtColor(hr_image, cv2.COLOR_BGR2RGB)
     hr_img = A.RandomCrop(crop_size, crop_size,
                           always_apply=True)(image=hr_img)
     hr_img = A.RandomBrightnessContrast()(image=hr_img['image'])
@@ -81,6 +84,7 @@ def get_transformed_pair_photo(hr_img, crop_size):
 
 
 def get_transformed_pair_game(hr_img, crop_size):
+    hr_img = cv2.cvtColor(hr_image, cv2.COLOR_BGR2RGB)
     hr_img = A.RandomCrop(crop_size, crop_size,
                           always_apply=True)(image=hr_img)
     hr_img = A.RandomBrightnessContrast()(image=hr_img['image'])
@@ -101,6 +105,7 @@ def get_transformed_pair_game(hr_img, crop_size):
 
 
 def get_transformed_pair_video(hr_img, crop_size):
+    hr_img = cv2.cvtColor(hr_image, cv2.COLOR_BGR2RGB)
     hr_img = A.RandomCrop(crop_size, crop_size,
                           always_apply=True)(image=hr_img)
     hr_img = A.RandomBrightnessContrast()(image=hr_img['image'])
@@ -187,6 +192,7 @@ class ValDatasetFromFolder(Dataset):
     def __getitem__(self, index):
         image_path = self.image_filenames[index]
         hr_image = cv2.imread(str(image_path))
+        hr_image = cv2.cvtColor(hr_image, cv2.COLOR_BGR2RGB)
         if hr_image is None:
             raise FileNotFoundError(
                 f'cannot open hr image at path "{image_path}"')
