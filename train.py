@@ -33,7 +33,7 @@ class Trainer:
                  gen_optimizer=None, disc_optimizer=None,
                  gen_optimizer_params=None, disc_optimizer_params=None,
                  verbose_logs=False, gen_model_name=None,
-                 disc_model_name=None, model_type='full', 
+                 disc_model_name=None, model_type='full',
                  save_interval=10) -> None:
 
         self.logger = logging.getLogger(__name__)
@@ -54,16 +54,18 @@ class Trainer:
 
         self.save_interval = save_interval
 
+        self.gen_model = Generator()
+        self.disc_model = Discriminator()
+
         if gen_model_name and disc_model_name:
             self.logger.info(
                 f'Loading models from files "{gen_model_name}" \
                   and "{disc_model_name}"')
-            self.gen_model = torch.load(gen_model_name)
-            self.disc_model = torch.load(disc_model_name)
+            self.gen_model.load_state_dict(torch.load(gen_model_name))
+            self.disc_model.load_state_dict(torch.load(disc_model_name))
         else:
             self.logger.info('Initializing new models')
-            self.gen_model = Generator()
-            self.disc_model = Discriminator()
+
 
         gen_optimizer_params = gen_optimizer_params if gen_optimizer_params else dict()
         disc_optimizer_params = disc_optimizer_params if disc_optimizer_params else dict()
